@@ -18,6 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # Function to get cryptocurrency data from CoinCap
 def get_crypto_data(crypto: str):
     url = f'https://api.coincap.io/v2/assets/{crypto}/history?interval=d1'
@@ -32,6 +33,24 @@ def get_crypto_data(crypto: str):
     logger.info(f"DataFrame head: {df.head()}")
     return df
 
+
+# Function to calculate volatility
+def calculate_volatility(df):
+    # Calculate the daily returns by computing the percentage change in price
+    df['returns'] = df['price'].pct_change()
+
+    # Calculate the standard deviation of the daily returns
+    # Multiply by the square root of 365 to annualize the volatility
+    # This assumes there are 365 trading days in a year
+    volatility = df['returns'].std() * (365 ** 0.5)  # Annualized volatility
+
+    # Log the calculated volatility for debugging and informational purposes
+    logger.info(f"Calculated volatility: {volatility}")
+
+    # Return the calculated volatility
+    return volatility
+
+
 # Function to create a plot
 def create_plot(df, crypto):
     fig = go.Figure(data=[go.Scatter(x=df['timestamp'], y=df['price'], mode='lines', name=crypto)])
@@ -43,13 +62,15 @@ def create_plot(df, crypto):
     except Exception as e:
         logger.error(f"Error saving plot to {file_path}: {e}")
 
+
 # Command handler for /chart
 async def send_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        cryptos = ['bitcoin', 'ethereum','litecoin', 'bitcoin-cash']
+        cryptos = ['bitcoin', 'ethereum', 'tether', 'solana']
         for crypto in cryptos:
             logger.info(f"Fetching data for {crypto}")
             df = get_crypto_data(crypto)
+            volatility = calculate_volatility(df)
             logger.info(f"Creating plot for {crypto}")
             create_plot(df, crypto)
             file_path = os.path.join(IMAGES_DIR, f'{crypto}.png')
@@ -57,7 +78,7 @@ async def send_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 logger.info(f"Sending plot for {crypto}")
                 with open(file_path, 'rb') as photo:
                     await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo,
-                                                 caption=f'Price chart for {crypto.capitalize()}')
+                                                 caption=f'Price chart for {crypto.capitalize()}\nVolatility: {volatility:.2%}')
             else:
                 logger.error(f"File {file_path} does not exist")
                 await update.message.reply_text(f"Failed to create plot for {crypto.capitalize()}")
@@ -65,12 +86,14 @@ async def send_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         logger.error(f"Error in send_chart: {e}")
         await update.message.reply_text("An error occurred while processing your request.")
 
+
 # Command handler for /hello
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f'Hello {update.effective_user.first_name}')
 
+
 # Create application instance
-app = ApplicationBuilder().token("SECRET").build()
+app = ApplicationBuilder().token("EXAMPLE").build()
 
 # Register command handlers
 app.add_handler(CommandHandler("hello", hello))
