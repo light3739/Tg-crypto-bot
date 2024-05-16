@@ -7,6 +7,11 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
+python-telegram-bot = "^21.1.1"
+requests = "^2.31.0"
+pandas = "^2.2.2"
+plotly = "^5.22.0"
+kaleido = "0.1.0post1"
 
 
 [build-system]
