@@ -129,6 +129,31 @@ async def select_unsubscribe_type(update: Update, context: ContextTypes.DEFAULT_
     return ConversationHandler.END
 
 
+async def show_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_id = update.message.from_user.id
+
+    # Fetch subscriptions from the database
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT crypto, threshold, threshold_type
+        FROM subscriptions
+        WHERE user_id = (SELECT user_id FROM users WHERE telegram_id = %s)
+    """, (telegram_id,))
+    subscriptions = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    if subscriptions:
+        message = "Your subscriptions:\n"
+        for crypto, threshold, threshold_type in subscriptions:
+            message += f"- {crypto.capitalize()}: {threshold_type.capitalize()} threshold of {threshold}%\n"
+    else:
+        message = "You have no subscriptions."
+
+    await update.message.reply_text(message)
+
+
 # Chart output logic
 async def select_crypto_option(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
