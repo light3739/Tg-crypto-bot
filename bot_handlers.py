@@ -1,7 +1,8 @@
 import logging
+from datetime import timedelta
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, \
-    filters
+from telegram.ext import ContextTypes, ConversationHandler
 import psycopg2
 from data_fetcher import get_crypto_data
 from metrics_calculator import calculate_volatility, calculate_metrics
@@ -14,14 +15,9 @@ logger = logging.getLogger(__name__)
 
 # Define states for the conversation
 SELECT_CRYPTO, SELECT_CHART = range(2)
-SELECT_SUBSCRIBE, SET_THRESHOLD = range(2)
+SELECT_SUBSCRIBE_CRYPTO, SELECT_THRESHOLD_TYPE, SET_THRESHOLD, SELECT_UNSUBSCRIBE_TYPE = range(4)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text('Welcome! Use the /crypto command to select a cryptocurrency.')
-
-
-# Subscription logic
 async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
         [InlineKeyboardButton("Bitcoin", callback_data='bitcoin')],
@@ -31,37 +27,105 @@ async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Please choose a cryptocurrency to subscribe to:', reply_markup=reply_markup)
-    return SELECT_SUBSCRIBE
+    return SELECT_SUBSCRIBE_CRYPTO
 
 
-async def select_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def select_subscribe_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
     context.user_data['crypto'] = query.data
+
+    keyboard = [
+        [InlineKeyboardButton("Increase", callback_data='increase')],
+        [InlineKeyboardButton("Decrease", callback_data='decrease')],
+        [InlineKeyboardButton("Unsubscribe", callback_data='unsubscribe')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        text=f'Selected cryptocurrency: {query.data}\nPlease enter the price change threshold (in %):')
-    return SET_THRESHOLD
+        text=f'Selected cryptocurrency: {query.data}\nDo you want to subscribe for an increase or decrease in price, or unsubscribe?',
+        reply_markup=reply_markup
+    )
+    return SELECT_THRESHOLD_TYPE
+
+
+async def select_threshold_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    threshold_type = query.data
+
+    if threshold_type == 'unsubscribe':
+        context.user_data['threshold_type'] = threshold_type
+        keyboard = [
+            [InlineKeyboardButton("Increase", callback_data='increase')],
+            [InlineKeyboardButton("Decrease", callback_data='decrease')],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            text=f'Selected to unsubscribe from {context.user_data["crypto"]}. Choose the type of subscription to unsubscribe from:',
+            reply_markup=reply_markup
+        )
+        return SELECT_UNSUBSCRIBE_TYPE
+    else:
+        context.user_data['threshold_type'] = threshold_type
+        await query.edit_message_text(
+            text=f'Selected threshold type: {threshold_type}\nPlease enter the price change threshold (in %):'
+        )
+        return SET_THRESHOLD
 
 
 async def set_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     threshold = float(update.message.text)
     crypto = context.user_data['crypto']
-    user_id = update.message.from_user.id
+    threshold_type = context.user_data['threshold_type']
+    telegram_id = update.message.from_user.id
+    username = update.message.from_user.username
 
     # Save subscription to the database
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
+
+    # Insert user if not exists and get user_id
     cur.execute(
         "INSERT INTO users (telegram_id, username) VALUES (%s, %s) ON CONFLICT (telegram_id) DO NOTHING RETURNING user_id",
-        (user_id, update.message.from_user.username))
-    user_id = cur.fetchone()[0]
-    cur.execute("INSERT INTO subscriptions (user_id, crypto, threshold) VALUES (%s, %s, %s)",
-                (user_id, crypto, threshold))
+        (telegram_id, username))
+    result = cur.fetchone()
+
+    if result:
+        user_id = result[0]
+    else:
+        cur.execute("SELECT user_id FROM users WHERE telegram_id = %s", (telegram_id,))
+        user_id = cur.fetchone()[0]
+
+    # Insert subscription
+    cur.execute("INSERT INTO subscriptions (user_id, crypto, threshold, threshold_type) VALUES (%s, %s, %s, %s)",
+                (user_id, crypto, threshold, threshold_type))
     conn.commit()
     cur.close()
     conn.close()
 
-    await update.message.reply_text(f'Subscribed to {crypto} with a threshold of {threshold}%')
+    await update.message.reply_text(f'Subscribed to {crypto} with a {threshold_type} threshold of {threshold}%')
+    return ConversationHandler.END
+
+
+async def select_unsubscribe_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    threshold_type = query.data
+    crypto = context.user_data['crypto']
+    telegram_id = update.callback_query.from_user.id
+
+    # Remove subscription from the database
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("""
+        DELETE FROM subscriptions
+        WHERE user_id = (SELECT user_id FROM users WHERE telegram_id = %s) AND crypto = %s AND threshold_type = %s
+    """, (telegram_id, crypto, threshold_type))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    await query.edit_message_text(f'Unsubscribed from {crypto} {threshold_type} notifications.')
     return ConversationHandler.END
 
 
@@ -106,7 +170,7 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     crypto = context.user_data['crypto']
 
     logger.info(f"Fetching data for {crypto}")
-    df = get_crypto_data(crypto)
+    df = get_crypto_data(crypto, 'd1', timedelta(days=90))
     if df.empty:
         await query.edit_message_text(f"Failed to fetch data for {crypto.capitalize()}")
         return ConversationHandler.END
@@ -129,7 +193,7 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         if os.path.exists(file_path):
             with open(file_path, 'rb') as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo,
-                                             caption=f'Price chart for {crypto.capitalize()}\nVolatility: {volatility:.2%}')
+                                             caption=f'Price chart for {crypto.capitalize()}')
                 logger.debug(f"Sent photo for {crypto}")
         else:
             logger.error(f"File {file_path} does not exist")

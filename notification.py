@@ -5,6 +5,7 @@ from config import DATABASE_URL
 from data_fetcher import get_crypto_data
 from metrics_calculator import calculate_price_change
 import datetime
+from datetime import timedelta
 
 logger = logging.getLogger('notifications')
 
@@ -14,7 +15,7 @@ def get_subscriptions():
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
     cur.execute(
-        "SELECT u.telegram_id, s.crypto, s.threshold, s.last_notified "
+        "SELECT u.telegram_id, s.crypto, s.threshold, s.threshold_type, s.last_notified "
         "FROM subscriptions s "
         "JOIN users u ON s.user_id = u.user_id")
     subscriptions = cur.fetchall()
@@ -27,19 +28,16 @@ async def check_price_changes():
     """Check price changes and send notifications if thresholds are exceeded."""
     logger.debug("Starting price change check for all subscriptions.")
     subscriptions = get_subscriptions()
-    for telegram_id, crypto, threshold, last_notified in subscriptions:
+    for telegram_id, crypto, threshold, threshold_type, last_notified in subscriptions:
         logger.debug(f"Checking price changes for user {telegram_id} and crypto {crypto}.")
-        df = get_crypto_data(crypto)
+        df = get_crypto_data(crypto, 'm1', timedelta(minutes=5))
         if not df.empty:
-            latest_price = df['price'].iloc[-1]
-            previous_price = df['price'].iloc[-2]
             price_change = calculate_price_change(df)
-            logger.debug(f"Latest price for {crypto}: {latest_price}")
-            logger.debug(f"Previous day's price for {crypto}: {previous_price}")
             logger.debug(f"Price change for {crypto}: {price_change:.2f}%")
-            if abs(price_change) >= threshold:
+            if (threshold_type == 'increase' and price_change >= threshold) or \
+                    (threshold_type == 'decrease' and price_change <= -threshold):
                 if should_notify(last_notified):
-                    await send_notification(telegram_id, crypto, price_change)
+                    await send_notification(telegram_id, crypto, price_change, threshold_type)
                     update_last_notified(telegram_id, crypto)
         else:
             logger.warning(f"No data fetched for {crypto}. Skipping.")
@@ -51,12 +49,13 @@ def should_notify(last_notified):
         return True
     now = datetime.datetime.utcnow()
     last_notified_time = last_notified.replace(tzinfo=None)
-    return (now - last_notified_time).total_seconds() > 86400  # 24 hours
+    return (now - last_notified_time).total_seconds() > 300  # 5 minutes
 
 
-async def send_notification(telegram_id, crypto, price_change):
+async def send_notification(telegram_id, crypto, price_change, threshold_type):
     """Send a notification to the user via Telegram."""
-    message = f"The price of {crypto} has changed by {price_change:.2f}%"
+    direction = "increased" if threshold_type == "increase" else "decreased"
+    message = f"The price of {crypto} has {direction} by {price_change:.2f}%"
     await bot.bot.send_message(chat_id=telegram_id, text=message)
     logger.info(f"Sent notification to {telegram_id} for {crypto}: {price_change:.2f}%")
 

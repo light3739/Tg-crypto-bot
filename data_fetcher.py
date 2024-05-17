@@ -6,10 +6,10 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 
-def get_crypto_data(crypto: str):
+def get_crypto_data(crypto: str, interval: str, time_delta: timedelta):
     end_date = datetime.utcnow()
-    start_date = end_date - timedelta(days=90)  # Fetch 90 days of data
-    url = f'https://api.coincap.io/v2/assets/{crypto}/history?interval=d1&start={int(start_date.timestamp() * 1000)}&end={int(end_date.timestamp() * 1000)}'
+    start_date = end_date - time_delta
+    url = f'https://api.coincap.io/v2/assets/{crypto}/history?interval={interval}&start={int(start_date.timestamp() * 1000)}&end={int(end_date.timestamp() * 1000)}'
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raise an error for bad status codes

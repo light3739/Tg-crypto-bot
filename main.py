@@ -4,8 +4,9 @@ import os
 
 from telegram import BotCommand
 from telegram.ext import CommandHandler, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
-from bot_handlers import hello, start, SELECT_CRYPTO, SELECT_CHART, select_crypto, select_chart, cancel, \
-    select_crypto_option, subscribe, select_subscribe, set_threshold, SELECT_SUBSCRIBE, SET_THRESHOLD
+from bot_handlers import hello, SELECT_CRYPTO, SELECT_THRESHOLD_TYPE, SET_THRESHOLD, select_crypto, \
+    select_threshold_type, set_threshold, subscribe, select_crypto_option, select_chart, SELECT_CHART, cancel, \
+    select_subscribe_crypto, SELECT_SUBSCRIBE_CRYPTO, SELECT_UNSUBSCRIBE_TYPE, select_unsubscribe_type
 from config import IMAGES_DIR
 from bot_instance import bot
 from notification import check_price_changes
@@ -17,7 +18,7 @@ if not os.path.exists(IMAGES_DIR):
 # Set up logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.DEBUG
 )
 logger = logging.getLogger(__name__)
 
@@ -45,17 +46,19 @@ crypto_conv_handler = ConversationHandler(
 )
 
 # Define the conversation handler for subscriptions
+# Define the conversation handler for subscriptions
 subscription_conv_handler = ConversationHandler(
     entry_points=[CommandHandler('subscribe', subscribe)],
     states={
-        SELECT_SUBSCRIBE: [CallbackQueryHandler(select_subscribe)],
+        SELECT_SUBSCRIBE_CRYPTO: [CallbackQueryHandler(select_subscribe_crypto)],
+        SELECT_THRESHOLD_TYPE: [CallbackQueryHandler(select_threshold_type)],
         SET_THRESHOLD: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_threshold)],
+        SELECT_UNSUBSCRIBE_TYPE: [CallbackQueryHandler(select_unsubscribe_type)],
     },
     fallbacks=[CommandHandler('cancel', cancel)]
 )
 
 # Register command handlers
-bot.add_handler(CommandHandler("start", start))
 bot.add_handler(CommandHandler("hello", hello))
 bot.add_handler(crypto_conv_handler)
 bot.add_handler(subscription_conv_handler)  # Add the subscription conversation handler
@@ -65,7 +68,7 @@ async def periodic_check():
     while True:
         await check_price_changes()
         logger.info("Checked price")
-        await asyncio.sleep(30)  # Wait for 30 seconds before the next check
+        await asyncio.sleep(30)  # Wait for 5 minutes before the next check
 
 
 async def main():
