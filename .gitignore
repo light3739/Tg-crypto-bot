@@ -2,6 +2,9 @@
 ./.idea
 .idea
 .env
+images
+/.images
+
 __pycache__/
 *.py[cod]
 *$py.class
