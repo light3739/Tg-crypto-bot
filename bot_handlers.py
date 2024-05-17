@@ -1,21 +1,71 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler
+from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, CallbackQueryHandler, MessageHandler, \
+    filters
+import psycopg2
 from data_fetcher import get_crypto_data
 from metrics_calculator import calculate_volatility, calculate_metrics
 from indicators_calculator import calculate_indicators
 from plot_creator import create_plot, create_indicators_plot, create_gauge
 import os
-from config import IMAGES_DIR
+from config import IMAGES_DIR, DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
 # Define states for the conversation
 SELECT_CRYPTO, SELECT_CHART = range(2)
+SELECT_SUBSCRIBE, SET_THRESHOLD = range(2)
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text('Welcome! Use the /crypto command to select a cryptocurrency.')
 
+
+# Subscription logic
+async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = [
+        [InlineKeyboardButton("Bitcoin", callback_data='bitcoin')],
+        [InlineKeyboardButton("Ethereum", callback_data='ethereum')],
+        [InlineKeyboardButton("Tether", callback_data='tether')],
+        [InlineKeyboardButton("Solana", callback_data='solana')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('Please choose a cryptocurrency to subscribe to:', reply_markup=reply_markup)
+    return SELECT_SUBSCRIBE
+
+
+async def select_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    context.user_data['crypto'] = query.data
+    await query.edit_message_text(
+        text=f'Selected cryptocurrency: {query.data}\nPlease enter the price change threshold (in %):')
+    return SET_THRESHOLD
+
+
+async def set_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    threshold = float(update.message.text)
+    crypto = context.user_data['crypto']
+    user_id = update.message.from_user.id
+
+    # Save subscription to the database
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO users (telegram_id, username) VALUES (%s, %s) ON CONFLICT (telegram_id) DO NOTHING RETURNING user_id",
+        (user_id, update.message.from_user.username))
+    user_id = cur.fetchone()[0]
+    cur.execute("INSERT INTO subscriptions (user_id, crypto, threshold) VALUES (%s, %s, %s)",
+                (user_id, crypto, threshold))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    await update.message.reply_text(f'Subscribed to {crypto} with a threshold of {threshold}%')
+    return ConversationHandler.END
+
+
+# Chart output logic
 async def select_crypto_option(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
         [InlineKeyboardButton("Bitcoin", callback_data='bitcoin')],
@@ -28,6 +78,7 @@ async def select_crypto_option(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data['message_id'] = message.message_id  # Store the message ID to delete it later
     logger.debug(f"Stored message ID for deletion: {message.message_id}")
     return SELECT_CRYPTO
+
 
 async def select_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -46,6 +97,7 @@ async def select_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data['message_id'] = message.message_id  # Store the message ID to delete it later
     logger.debug(f"Updated message ID for deletion: {message.message_id}")
     return SELECT_CHART
+
 
 async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -136,9 +188,11 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     return ConversationHandler.END
 
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text('Operation cancelled.')
     return ConversationHandler.END
+
 
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f'Hello {update.effective_user.first_name}')

@@ -35,3 +35,10 @@ def calculate_metrics(df):
     df['Lower Band'] = df['SMA'] - (df['price'].rolling(window=10).std() * 2)
 
     return df
+
+
+def calculate_price_change(df):
+    latest_price = df['price'].iloc[-1]
+    previous_price = df['price'].iloc[-2]
+    price_change = ((latest_price - previous_price) / previous_price) * 100
+    return price_change

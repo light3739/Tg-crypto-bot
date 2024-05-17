@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+
 def get_crypto_data(crypto: str):
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=90)  # Fetch 90 days of data

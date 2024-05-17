@@ -12,6 +12,7 @@ requests = "^2.31.0"
 pandas = "^2.2.2"
 plotly = "^5.22.0"
 kaleido = "0.1.0post1"
+psycopg2 = "^2.9.9"
 
 
 [build-system]
