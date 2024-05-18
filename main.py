@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime
 
 from telegram import BotCommand
 from telegram.ext import CommandHandler, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
@@ -8,8 +9,9 @@ from bot_handlers import hello, SELECT_CRYPTO, SELECT_THRESHOLD_TYPE, SET_THRESH
     select_threshold_type, set_threshold, subscribe, select_crypto_option, select_chart, SELECT_CHART, cancel, \
     select_subscribe_crypto, SELECT_SUBSCRIBE_CRYPTO, SELECT_UNSUBSCRIBE_TYPE, select_unsubscribe_type, \
     show_subscriptions, news
-from config import IMAGES_DIR
+from config import IMAGES_DIR, NEWS_API_KEY
 from bot_instance import bot
+from news_fetcher import get_last_fetched_news_time, fetch_latest_news, save_news_to_db
 from notification import check_price_changes
 
 # Ensure the images directory exists
@@ -73,7 +75,17 @@ async def periodic_check():
     while True:
         await check_price_changes()
         logger.info("Checked price")
+
+        # Check if the latest news was fetched more than 24 hours ago
+        last_fetched_time = get_last_fetched_news_time()
+        if not last_fetched_time or (datetime.now() - last_fetched_time).total_seconds() > 86400:
+            latest_news = fetch_latest_news(NEWS_API_KEY)
+            if latest_news:
+                save_news_to_db(latest_news)
+                logger.info("Fetched and saved latest news")
+
         await asyncio.sleep(30)  # Wait for 5 minutes before the next check
+
 
 
 async def main():

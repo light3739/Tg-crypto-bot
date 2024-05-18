@@ -1,6 +1,9 @@
 import requests
 from datetime import datetime
 from translate import Translator
+import psycopg2
+from config import DATABASE_URL
+
 
 def fetch_latest_news(api_key):
     url = f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=blockchain&apikey={api_key}'
@@ -32,6 +35,38 @@ def fetch_latest_news(api_key):
             f"{title_ru}\n\n{summary_ru}[Читать далее]({article_url}\n\n{human_readable_date}\n\n{authors})"
         )
 
-        return simplified_message
+        return {
+            "title": title,
+            "summary": summary,
+            "article_url": article_url,
+            "time_published": dt,
+            "authors": authors,
+            "simplified_message": simplified_message
+        }
     else:
-        return "Новостные статьи не найдены."
+        print("No news articles found in the response.")
+        return None
+
+
+def save_news_to_db(news_article):
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO crypto_news (title, summary, article_url, time_published, authors)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (title) DO NOTHING
+    """, (news_article["title"], news_article["summary"], news_article["article_url"], news_article["time_published"],
+          news_article["authors"]))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_last_fetched_news_time():
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(fetched_at) FROM crypto_news")
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+    return result[0] if result else None

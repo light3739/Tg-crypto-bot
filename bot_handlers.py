@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
@@ -7,10 +7,10 @@ import psycopg2
 from data_fetcher import get_crypto_data
 from metrics_calculator import calculate_volatility, calculate_metrics
 from indicators_calculator import calculate_indicators
-from news_fetcher import fetch_latest_news
+from news_fetcher import fetch_latest_news, save_news_to_db, get_last_fetched_news_time
 from plot_creator import create_plot, create_indicators_plot, create_gauge
 import os
-from config import IMAGES_DIR, DATABASE_URL
+from config import IMAGES_DIR, DATABASE_URL, NEWS_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +40,29 @@ CHART_TYPE_KEYBOARD = [
 
 
 async def news(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    api_key = '46L1DPM95R38KDWT'  # Replace with your actual API key
-    latest_news = fetch_latest_news(api_key)
-    await update.message.reply_text(latest_news, parse_mode='Markdown')
-
+    api_key = NEWS_API_KEY
+    last_fetched_time = get_last_fetched_news_time()
+    if not last_fetched_time or (datetime.now() - last_fetched_time).total_seconds() > 86400:
+        latest_news = fetch_latest_news(api_key)
+        if latest_news:
+            save_news_to_db(latest_news)
+            await update.message.reply_text(latest_news["simplified_message"], parse_mode='Markdown')
+        else:
+            await update.message.reply_text("Новостные статьи не найдены.")
+    else:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT title, summary, article_url, time_published, authors FROM crypto_news ORDER BY fetched_at DESC LIMIT 1")
+        news_article = cur.fetchone()
+        cur.close()
+        conn.close()
+        if news_article:
+            title, summary, article_url, time_published, authors = news_article
+            message = f"{title}\n\n{summary}\n\n[Читать далее]({article_url})\n\n{time_published}\n\n{authors}"
+            await update.message.reply_text(message, parse_mode='Markdown')
+        else:
+            await update.message.reply_text("Новостные статьи не найдены.")
 
 def get_user_id(telegram_id):
     conn = psycopg2.connect(DATABASE_URL)
