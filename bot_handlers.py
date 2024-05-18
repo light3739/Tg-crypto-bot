@@ -17,15 +17,39 @@ logger = logging.getLogger(__name__)
 SELECT_CRYPTO, SELECT_CHART = range(2)
 SELECT_SUBSCRIBE_CRYPTO, SELECT_THRESHOLD_TYPE, SET_THRESHOLD, SELECT_UNSUBSCRIBE_TYPE = range(4)
 
+# Define common keyboard options
+CRYPTO_KEYBOARD = [
+    [InlineKeyboardButton("Bitcoin", callback_data='bitcoin')],
+    [InlineKeyboardButton("Ethereum", callback_data='ethereum')],
+    [InlineKeyboardButton("Tether", callback_data='tether')],
+    [InlineKeyboardButton("Solana", callback_data='solana')],
+]
+
+THRESHOLD_TYPE_KEYBOARD = [
+    [InlineKeyboardButton("Increase", callback_data='increase')],
+    [InlineKeyboardButton("Decrease", callback_data='decrease')],
+]
+
+CHART_TYPE_KEYBOARD = [
+    [InlineKeyboardButton("Price Chart", callback_data='price')],
+    [InlineKeyboardButton("Indicators Chart", callback_data='indicators')],
+    [InlineKeyboardButton("Volatility Gauge", callback_data='volatility')],
+    [InlineKeyboardButton("RSI Gauge", callback_data='rsi')],
+]
+
+
+def get_user_id(telegram_id):
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("SELECT user_id FROM users WHERE telegram_id = %s", (telegram_id,))
+    result = cur.fetchone()
+    cur.close()
+    conn.close()
+    return result[0] if result else None
+
 
 async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [
-        [InlineKeyboardButton("Bitcoin", callback_data='bitcoin')],
-        [InlineKeyboardButton("Ethereum", callback_data='ethereum')],
-        [InlineKeyboardButton("Tether", callback_data='tether')],
-        [InlineKeyboardButton("Solana", callback_data='solana')],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = InlineKeyboardMarkup(CRYPTO_KEYBOARD)
     await update.message.reply_text('Please choose a cryptocurrency to subscribe to:', reply_markup=reply_markup)
     return SELECT_SUBSCRIBE_CRYPTO
 
@@ -35,11 +59,7 @@ async def select_subscribe_crypto(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     context.user_data['crypto'] = query.data
 
-    keyboard = [
-        [InlineKeyboardButton("Increase", callback_data='increase')],
-        [InlineKeyboardButton("Decrease", callback_data='decrease')],
-        [InlineKeyboardButton("Unsubscribe", callback_data='unsubscribe')],
-    ]
+    keyboard = THRESHOLD_TYPE_KEYBOARD + [[InlineKeyboardButton("Unsubscribe", callback_data='unsubscribe')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
         text=f'Selected cryptocurrency: {query.data}\nDo you want to subscribe for an increase or decrease in price, or unsubscribe?',
@@ -55,11 +75,7 @@ async def select_threshold_type(update: Update, context: ContextTypes.DEFAULT_TY
 
     if threshold_type == 'unsubscribe':
         context.user_data['threshold_type'] = threshold_type
-        keyboard = [
-            [InlineKeyboardButton("Increase", callback_data='increase')],
-            [InlineKeyboardButton("Decrease", callback_data='decrease')],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        reply_markup = InlineKeyboardMarkup(THRESHOLD_TYPE_KEYBOARD)
         await query.edit_message_text(
             text=f'Selected to unsubscribe from {context.user_data["crypto"]}. Choose the type of subscription to unsubscribe from:',
             reply_markup=reply_markup
@@ -80,7 +96,6 @@ async def set_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     telegram_id = update.message.from_user.id
     username = update.message.from_user.username
 
-    # Save subscription to the database
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
@@ -88,13 +103,7 @@ async def set_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     cur.execute(
         "INSERT INTO users (telegram_id, username) VALUES (%s, %s) ON CONFLICT (telegram_id) DO NOTHING RETURNING user_id",
         (telegram_id, username))
-    result = cur.fetchone()
-
-    if result:
-        user_id = result[0]
-    else:
-        cur.execute("SELECT user_id FROM users WHERE telegram_id = %s", (telegram_id,))
-        user_id = cur.fetchone()[0]
+    user_id = cur.fetchone()[0] if cur.rowcount > 0 else get_user_id(telegram_id)
 
     # Insert subscription
     cur.execute("INSERT INTO subscriptions (user_id, crypto, threshold, threshold_type) VALUES (%s, %s, %s, %s)",
@@ -114,7 +123,6 @@ async def select_unsubscribe_type(update: Update, context: ContextTypes.DEFAULT_
     crypto = context.user_data['crypto']
     telegram_id = update.callback_query.from_user.id
 
-    # Remove subscription from the database
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
     cur.execute("""
@@ -132,7 +140,6 @@ async def select_unsubscribe_type(update: Update, context: ContextTypes.DEFAULT_
 async def show_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.message.from_user.id
 
-    # Fetch subscriptions from the database
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
     cur.execute("""
@@ -154,17 +161,10 @@ async def show_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(message)
 
 
-# Chart output logic
 async def select_crypto_option(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = [
-        [InlineKeyboardButton("Bitcoin", callback_data='bitcoin')],
-        [InlineKeyboardButton("Ethereum", callback_data='ethereum')],
-        [InlineKeyboardButton("Tether", callback_data='tether')],
-        [InlineKeyboardButton("Solana", callback_data='solana')],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = InlineKeyboardMarkup(CRYPTO_KEYBOARD)
     message = await update.message.reply_text('Please choose a cryptocurrency:', reply_markup=reply_markup)
-    context.user_data['message_id'] = message.message_id  # Store the message ID to delete it later
+    context.user_data['message_id'] = message.message_id
     logger.debug(f"Stored message ID for deletion: {message.message_id}")
     return SELECT_CRYPTO
 
@@ -174,16 +174,10 @@ async def select_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     await query.answer()
     context.user_data['crypto'] = query.data
 
-    keyboard = [
-        [InlineKeyboardButton("Price Chart", callback_data='price')],
-        [InlineKeyboardButton("Indicators Chart", callback_data='indicators')],
-        [InlineKeyboardButton("Volatility Gauge", callback_data='volatility')],
-        [InlineKeyboardButton("RSI Gauge", callback_data='rsi')],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = InlineKeyboardMarkup(CHART_TYPE_KEYBOARD)
     message = await query.edit_message_text(text=f'Selected cryptocurrency: {query.data}\nPlease choose a chart type:',
                                             reply_markup=reply_markup)
-    context.user_data['message_id'] = message.message_id  # Store the message ID to delete it later
+    context.user_data['message_id'] = message.message_id
     logger.debug(f"Updated message ID for deletion: {message.message_id}")
     return SELECT_CHART
 
