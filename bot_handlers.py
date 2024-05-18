@@ -14,11 +14,9 @@ from config import IMAGES_DIR, DATABASE_URL, NEWS_API_KEY
 
 logger = logging.getLogger(__name__)
 
-# Define states for the conversation
 SELECT_CRYPTO, SELECT_CHART = range(2)
 SELECT_SUBSCRIBE_CRYPTO, SELECT_THRESHOLD_TYPE, SET_THRESHOLD, SELECT_UNSUBSCRIBE_TYPE = range(4)
 
-# Define common keyboard options
 CRYPTO_KEYBOARD = [
     [InlineKeyboardButton("Bitcoin", callback_data='bitcoin')],
     [InlineKeyboardButton("Ethereum", callback_data='ethereum')],
@@ -27,15 +25,15 @@ CRYPTO_KEYBOARD = [
 ]
 
 THRESHOLD_TYPE_KEYBOARD = [
-    [InlineKeyboardButton("Increase", callback_data='increase')],
-    [InlineKeyboardButton("Decrease", callback_data='decrease')],
+    [InlineKeyboardButton("Повышение", callback_data='increase')],
+    [InlineKeyboardButton("Понижение", callback_data='decrease')],
 ]
 
 CHART_TYPE_KEYBOARD = [
-    [InlineKeyboardButton("Price Chart", callback_data='price')],
-    [InlineKeyboardButton("Indicators Chart", callback_data='indicators')],
-    [InlineKeyboardButton("Volatility Gauge", callback_data='volatility')],
-    [InlineKeyboardButton("RSI Gauge", callback_data='rsi')],
+    [InlineKeyboardButton("График цен", callback_data='price')],
+    [InlineKeyboardButton("График индикаторов", callback_data='indicators')],
+    [InlineKeyboardButton("Индикатор волатильности", callback_data='volatility')],
+    [InlineKeyboardButton("Индикатор RSI", callback_data='rsi')],
 ]
 
 
@@ -64,6 +62,7 @@ async def news(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             await update.message.reply_text("Новостные статьи не найдены.")
 
+
 def get_user_id(telegram_id):
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -76,7 +75,7 @@ def get_user_id(telegram_id):
 
 async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(CRYPTO_KEYBOARD)
-    await update.message.reply_text('Please choose a cryptocurrency to subscribe to:', reply_markup=reply_markup)
+    await update.message.reply_text('Пожалуйста, выберите криптовалюту для подписки:', reply_markup=reply_markup)
     return SELECT_SUBSCRIBE_CRYPTO
 
 
@@ -85,10 +84,10 @@ async def select_subscribe_crypto(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     context.user_data['crypto'] = query.data
 
-    keyboard = THRESHOLD_TYPE_KEYBOARD + [[InlineKeyboardButton("Unsubscribe", callback_data='unsubscribe')]]
+    keyboard = THRESHOLD_TYPE_KEYBOARD + [[InlineKeyboardButton("Отписаться", callback_data='unsubscribe')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        text=f'Selected cryptocurrency: {query.data}\nDo you want to subscribe for an increase or decrease in price, or unsubscribe?',
+        text=f'Выбрана криптовалюта: {query.data}\nВы хотите подписаться на повышение или понижение цены, или отписаться?',
         reply_markup=reply_markup
     )
     return SELECT_THRESHOLD_TYPE
@@ -103,14 +102,14 @@ async def select_threshold_type(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data['threshold_type'] = threshold_type
         reply_markup = InlineKeyboardMarkup(THRESHOLD_TYPE_KEYBOARD)
         await query.edit_message_text(
-            text=f'Selected to unsubscribe from {context.user_data["crypto"]}. Choose the type of subscription to unsubscribe from:',
+            text=f'Вы выбрали отписаться от {context.user_data["crypto"]}. Выберите тип подписки для отписки:',
             reply_markup=reply_markup
         )
         return SELECT_UNSUBSCRIBE_TYPE
     else:
         context.user_data['threshold_type'] = threshold_type
         await query.edit_message_text(
-            text=f'Selected threshold type: {threshold_type}\nPlease enter the price change threshold (in %):'
+            text=f'Выбран тип порога: {threshold_type}\nПожалуйста, введите порог изменения цены (в %):'
         )
         return SET_THRESHOLD
 
@@ -125,20 +124,19 @@ async def set_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
 
-    # Insert user if not exists and get user_id
     cur.execute(
         "INSERT INTO users (telegram_id, username) VALUES (%s, %s) ON CONFLICT (telegram_id) DO NOTHING RETURNING user_id",
         (telegram_id, username))
     user_id = cur.fetchone()[0] if cur.rowcount > 0 else get_user_id(telegram_id)
 
-    # Insert subscription
     cur.execute("INSERT INTO subscriptions (user_id, crypto, threshold, threshold_type) VALUES (%s, %s, %s, %s)",
                 (user_id, crypto, threshold, threshold_type))
     conn.commit()
     cur.close()
     conn.close()
 
-    await update.message.reply_text(f'Subscribed to {crypto} with a {threshold_type} threshold of {threshold}%')
+    threshold_type_ru = "повышение" if threshold_type == "increase" else "понижение"
+    await update.message.reply_text(f'Подписка на {crypto} с порогом {threshold_type_ru} в {threshold}% оформлена')
     return ConversationHandler.END
 
 
@@ -159,7 +157,8 @@ async def select_unsubscribe_type(update: Update, context: ContextTypes.DEFAULT_
     cur.close()
     conn.close()
 
-    await query.edit_message_text(f'Unsubscribed from {crypto} {threshold_type} notifications.')
+    threshold_type_ru = "повышение" if threshold_type == "increase" else "понижение"
+    await query.edit_message_text(f'Отписка от уведомлений {crypto} {threshold_type_ru} выполнена.')
     return ConversationHandler.END
 
 
@@ -178,20 +177,21 @@ async def show_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE)
     conn.close()
 
     if subscriptions:
-        message = "Your subscriptions:\n"
+        message = "Ваши подписки:\n"
         for crypto, threshold, threshold_type in subscriptions:
-            message += f"- {crypto.capitalize()}: {threshold_type.capitalize()} threshold of {threshold}%\n"
+            threshold_type_ru = "повышение" if threshold_type == "increase" else "понижение"
+            message += f"- {crypto.capitalize()}: порог {threshold_type_ru} в {threshold}%\n"
     else:
-        message = "You have no subscriptions."
+        message = "У вас нет подписок."
 
     await update.message.reply_text(message)
 
 
 async def select_crypto_option(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(CRYPTO_KEYBOARD)
-    message = await update.message.reply_text('Please choose a cryptocurrency:', reply_markup=reply_markup)
+    message = await update.message.reply_text('Пожалуйста, выберите криптовалюту:', reply_markup=reply_markup)
     context.user_data['message_id'] = message.message_id
-    logger.debug(f"Stored message ID for deletion: {message.message_id}")
+    logger.debug(f"ID сообщения для удаления сохранен: {message.message_id}")
     return SELECT_CRYPTO
 
 
@@ -201,10 +201,11 @@ async def select_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data['crypto'] = query.data
 
     reply_markup = InlineKeyboardMarkup(CHART_TYPE_KEYBOARD)
-    message = await query.edit_message_text(text=f'Selected cryptocurrency: {query.data}\nPlease choose a chart type:',
-                                            reply_markup=reply_markup)
+    message = await query.edit_message_text(
+        text=f'Выбрана криптовалюта: {query.data}\nПожалуйста, выберите тип графика:',
+        reply_markup=reply_markup)
     context.user_data['message_id'] = message.message_id
-    logger.debug(f"Updated message ID for deletion: {message.message_id}")
+    logger.debug(f"ID сообщения для удаления обновлен: {message.message_id}")
     return SELECT_CHART
 
 
@@ -214,65 +215,64 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     chart_type = query.data
     crypto = context.user_data['crypto']
 
-    logger.info(f"Fetching data for {crypto}")
+    logger.info(f"Получение данных для {crypto}")
     df = get_crypto_data(crypto, 'd1', timedelta(days=90))
     if df.empty:
-        await query.edit_message_text(f"Failed to fetch data for {crypto.capitalize()}")
+        await query.edit_message_text(f"Не удалось получить данные для {crypto.capitalize()}")
         return ConversationHandler.END
 
     df = calculate_metrics(df)
     df = calculate_indicators(df)
     volatility = calculate_volatility(df)
     if volatility is None:
-        await query.edit_message_text(f"Failed to calculate volatility for {crypto.capitalize()}")
+        await query.edit_message_text(f"Не удалось рассчитать волатильность для {crypto.capitalize()}")
         return ConversationHandler.END
 
-    # Store the message ID to delete it later
     message_id = context.user_data.get('message_id')
-    logger.debug(f"Message ID to delete: {message_id}")
+    logger.debug(f"ID сообщения для удаления: {message_id}")
 
     if chart_type == 'price':
-        logger.info(f"Creating price plot for {crypto}")
+        logger.info(f"Создание графика цен для {crypto}")
         create_plot(df, crypto)
         file_path = os.path.join(IMAGES_DIR, f'{crypto}.png')
         if os.path.exists(file_path):
             with open(file_path, 'rb') as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo,
-                                             caption=f'Price chart for {crypto.capitalize()}')
-                logger.debug(f"Sent photo for {crypto}")
+                                             caption=f'График цен для {crypto.capitalize()}')
+                logger.debug(f"Фото для {crypto} отправлено")
         else:
-            logger.error(f"File {file_path} does not exist")
-            await query.edit_message_text(f"Failed to create plot for {crypto.capitalize()}")
+            logger.error(f"Файл {file_path} не существует")
+            await query.edit_message_text(f"Не удалось создать график для {crypto.capitalize()}")
 
     elif chart_type == 'indicators':
-        logger.info(f"Creating indicators plot for {crypto}")
+        logger.info(f"Создание графика индикаторов для {crypto}")
         create_indicators_plot(df, crypto)
         indicators_file_path = os.path.join(IMAGES_DIR, f'{crypto}_indicators.png')
         if os.path.exists(indicators_file_path):
             with open(indicators_file_path, 'rb') as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo,
-                                             caption=f'Indicators chart for {crypto.capitalize()}')
-                logger.debug(f"Sent indicators photo for {crypto}")
+                                             caption=f'График индикаторов для {crypto.capitalize()}')
+                logger.debug(f"Фото индикаторов для {crypto} отправлено")
         else:
-            logger.error(f"File {indicators_file_path} does not exist")
-            await query.edit_message_text(f"Failed to create indicators plot for {crypto.capitalize()}")
+            logger.error(f"Файл {indicators_file_path} не существует")
+            await query.edit_message_text(f"Не удалось создать график индикаторов для {crypto.capitalize()}")
 
     elif chart_type == 'volatility':
-        logger.info(f"Creating volatility gauge for {crypto}")
-        volatility_gauge = create_gauge(volatility, "Volatility", max_value=1)
+        logger.info(f"Создание индикатора волатильности для {crypto}")
+        volatility_gauge = create_gauge(volatility, "Волатильность", max_value=1)
         volatility_gauge_file = os.path.join(IMAGES_DIR, f'{crypto}_volatility.png')
         volatility_gauge.write_image(volatility_gauge_file)
         if os.path.exists(volatility_gauge_file):
             with open(volatility_gauge_file, 'rb') as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo,
-                                             caption=f'Volatility gauge for {crypto.capitalize()}')
-                logger.debug(f"Sent volatility gauge photo for {crypto}")
+                                             caption=f'Индикатор волатильности для {crypto.capitalize()}')
+                logger.debug(f"Фото индикатора волатильности для {crypto} отправлено")
         else:
-            logger.error(f"File {volatility_gauge_file} does not exist")
-            await query.edit_message_text(f"Failed to create volatility gauge for {crypto.capitalize()}")
+            logger.error(f"Файл {volatility_gauge_file} не существует")
+            await query.edit_message_text(f"Не удалось создать индикатор волатильности для {crypto.capitalize()}")
 
     elif chart_type == 'rsi':
-        logger.info(f"Creating RSI gauge for {crypto}")
+        logger.info(f"Создание индикатора RSI для {crypto}")
         rsi_value = df['RSI'].iloc[-1]
         rsi_gauge = create_gauge(rsi_value, "RSI", max_value=100)
         rsi_gauge_file = os.path.join(IMAGES_DIR, f'{crypto}_rsi.png')
@@ -280,28 +280,27 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         if os.path.exists(rsi_gauge_file):
             with open(rsi_gauge_file, 'rb') as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo,
-                                             caption=f'RSI gauge for {crypto.capitalize()}')
-                logger.debug(f"Sent RSI gauge photo for {crypto}")
+                                             caption=f'Индикатор RSI для {crypto.capitalize()}')
+                logger.debug(f"Фото индикатора RSI для {crypto} отправлено")
         else:
-            logger.error(f"File {rsi_gauge_file} does not exist")
-            await query.edit_message_text(f"Failed to create RSI gauge for {crypto.capitalize()}")
+            logger.error(f"Файл {rsi_gauge_file} не существует")
+            await query.edit_message_text(f"Не удалось создать индикатор RSI для {crypto.capitalize()}")
 
-    # Delete the previous message
     if message_id:
         try:
-            logger.debug(f"Attempting to delete message with ID: {message_id}")
+            logger.debug(f"Попытка удалить сообщение с ID: {message_id}")
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=message_id)
-            logger.debug(f"Deleted message with ID: {message_id}")
+            logger.debug(f"Сообщение с ID: {message_id} удалено")
         except Exception as e:
-            logger.error(f"Failed to delete message with ID {message_id}: {e}")
+            logger.error(f"Не удалось удалить сообщение с ID {message_id}: {e}")
 
     return ConversationHandler.END
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text('Operation cancelled.')
+    await update.message.reply_text('Операция отменена.')
     return ConversationHandler.END
 
 
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(f'Hello {update.effective_user.first_name}')
+    await update.message.reply_text(f'Привет, {update.effective_user.first_name}')

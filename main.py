@@ -14,32 +14,28 @@ from bot_instance import bot
 from news_fetcher import get_last_fetched_news_time, fetch_latest_news, save_news_to_db
 from notification import check_price_changes
 
-# Ensure the images directory exists
 if not os.path.exists(IMAGES_DIR):
     os.makedirs(IMAGES_DIR)
 
-# Set up logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
 
-# Set bot commands
 async def set_commands():
     await bot.bot.set_my_commands([
-        BotCommand("start", "Start the bot"),
-        BotCommand("crypto", "Select a cryptocurrency"),
-        BotCommand("hello", "Say hello"),
-        BotCommand("cancel", "Cancel the current operation"),
-        BotCommand("subscribe", "Subscribe to cryptocurrency notifications"),
-        BotCommand("subscriptions", "Show all your subscriptions"),
-        BotCommand("news", "Get the latest blockchain news")  # Add the new command
+        BotCommand("start", "Запустить бота"),
+        BotCommand("crypto", "Выбрать криптовалюту"),
+        BotCommand("hello", "Поздороваться"),
+        BotCommand("cancel", "Отменить текущую операцию"),
+        BotCommand("subscribe", "Подписаться на уведомления о криптовалюте"),
+        BotCommand("subscriptions", "Показать все ваши подписки"),
+        BotCommand("news", "Получить последние новости о блокчейне")
     ])
 
 
-# Define the conversation handler for crypto charts
 crypto_conv_handler = ConversationHandler(
     entry_points=[CommandHandler('crypto', select_crypto_option)],
     states={
@@ -47,11 +43,9 @@ crypto_conv_handler = ConversationHandler(
         SELECT_CHART: [CallbackQueryHandler(select_chart)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
-    per_message=False  # Ensure handlers are tracked for every message
+    per_message=False
 )
 
-# Define the conversation handler for subscriptions
-# Define the conversation handler for subscriptions
 subscription_conv_handler = ConversationHandler(
     entry_points=[CommandHandler('subscribe', subscribe)],
     states={
@@ -63,29 +57,26 @@ subscription_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler('cancel', cancel)]
 )
 
-# Register command handlers
 bot.add_handler(CommandHandler("news", news))
 bot.add_handler(CommandHandler("hello", hello))
 bot.add_handler(CommandHandler("subscriptions", show_subscriptions))
 bot.add_handler(crypto_conv_handler)
-bot.add_handler(subscription_conv_handler)  # Add the subscription conversation handler
+bot.add_handler(subscription_conv_handler)
 
 
 async def periodic_check():
     while True:
         await check_price_changes()
-        logger.info("Checked price")
+        logger.info("Проверка цен завершена")
 
-        # Check if the latest news was fetched more than 24 hours ago
         last_fetched_time = get_last_fetched_news_time()
         if not last_fetched_time or (datetime.now() - last_fetched_time).total_seconds() > 86400:
             latest_news = fetch_latest_news(NEWS_API_KEY)
             if latest_news:
                 save_news_to_db(latest_news)
-                logger.info("Fetched and saved latest news")
+                logger.info("Последние новости получены и сохранены")
 
-        await asyncio.sleep(30)  # Wait for 5 minutes before the next check
-
+        await asyncio.sleep(30)
 
 
 async def main():
@@ -94,21 +85,17 @@ async def main():
     await bot.start()
     await bot.updater.start_polling()
 
-    # Create the periodic check task and run it concurrently
     periodic_task = asyncio.create_task(periodic_check())
 
     try:
-        # Keep the event loop running until you want to shutdown
         await asyncio.Event().wait()
     finally:
-        # Stop the periodic check task
         periodic_task.cancel()
         await bot.updater.stop()
         await bot.stop()
         await bot.shutdown()
 
 
-# Start the bot
 if __name__ == '__main__':
-    logger.info("Starting bot")
+    logger.info("Запуск бота")
     asyncio.run(main())

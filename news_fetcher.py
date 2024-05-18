@@ -18,19 +18,16 @@ def fetch_latest_news(api_key):
         time_published = latest_article.get('time_published', 'Нет времени публикации')
         authors = latest_article.get('authors', 'Нет авторов')
 
-        # Convert the published time to a human-readable format
         if time_published != 'Нет времени публикации':
             dt = datetime.strptime(time_published, '%Y%m%dT%H%M%S')
             human_readable_date = dt.strftime('%Y-%m-%d %H:%M:%S')
         else:
             human_readable_date = 'Нет времени публикации'
 
-        # Translate the title and summary to Russian
         translator = Translator(to_lang="ru")
         title_ru = translator.translate(title)
         summary_ru = translator.translate(summary)
 
-        # Simplify the message to exclude "Title", "Summary", and "URL"
         simplified_message = (
             f"{title_ru}\n\n{summary_ru}[Читать далее]({article_url}\n\n{human_readable_date}\n\n{authors})"
         )
@@ -44,7 +41,6 @@ def fetch_latest_news(api_key):
             "simplified_message": simplified_message
         }
     else:
-        print("No news articles found in the response.")
         return None
 
 
