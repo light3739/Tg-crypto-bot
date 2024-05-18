@@ -7,6 +7,7 @@ import psycopg2
 from data_fetcher import get_crypto_data
 from metrics_calculator import calculate_volatility, calculate_metrics
 from indicators_calculator import calculate_indicators
+from news_fetcher import fetch_latest_news
 from plot_creator import create_plot, create_indicators_plot, create_gauge
 import os
 from config import IMAGES_DIR, DATABASE_URL
@@ -36,6 +37,12 @@ CHART_TYPE_KEYBOARD = [
     [InlineKeyboardButton("Volatility Gauge", callback_data='volatility')],
     [InlineKeyboardButton("RSI Gauge", callback_data='rsi')],
 ]
+
+
+async def news(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    api_key = '46L1DPM95R38KDWT'  # Replace with your actual API key
+    latest_news = fetch_latest_news(api_key)
+    await update.message.reply_text(latest_news, parse_mode='Markdown')
 
 
 def get_user_id(telegram_id):

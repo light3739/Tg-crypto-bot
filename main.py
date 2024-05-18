@@ -7,7 +7,7 @@ from telegram.ext import CommandHandler, ConversationHandler, CallbackQueryHandl
 from bot_handlers import hello, SELECT_CRYPTO, SELECT_THRESHOLD_TYPE, SET_THRESHOLD, select_crypto, \
     select_threshold_type, set_threshold, subscribe, select_crypto_option, select_chart, SELECT_CHART, cancel, \
     select_subscribe_crypto, SELECT_SUBSCRIBE_CRYPTO, SELECT_UNSUBSCRIBE_TYPE, select_unsubscribe_type, \
-    show_subscriptions
+    show_subscriptions, news
 from config import IMAGES_DIR
 from bot_instance import bot
 from notification import check_price_changes
@@ -32,7 +32,8 @@ async def set_commands():
         BotCommand("hello", "Say hello"),
         BotCommand("cancel", "Cancel the current operation"),
         BotCommand("subscribe", "Subscribe to cryptocurrency notifications"),
-        BotCommand("subscriptions", "Show all your subscriptions")  # Add the new command
+        BotCommand("subscriptions", "Show all your subscriptions"),
+        BotCommand("news", "Get the latest blockchain news")  # Add the new command
     ])
 
 
@@ -61,6 +62,7 @@ subscription_conv_handler = ConversationHandler(
 )
 
 # Register command handlers
+bot.add_handler(CommandHandler("news", news))
 bot.add_handler(CommandHandler("hello", hello))
 bot.add_handler(CommandHandler("subscriptions", show_subscriptions))
 bot.add_handler(crypto_conv_handler)
