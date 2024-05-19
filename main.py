@@ -66,17 +66,21 @@ bot.add_handler(subscription_conv_handler)
 
 async def periodic_check():
     while True:
-        await check_price_changes()
-        logger.info("Проверка цен завершена")
+        try:
+            await check_price_changes()
+            logger.info("Проверка цен завершена")
 
-        last_fetched_time = get_last_fetched_news_time()
-        if not last_fetched_time or (datetime.now() - last_fetched_time).total_seconds() > 86400:
-            latest_news = fetch_latest_news(NEWS_API_KEY)
-            if latest_news:
-                save_news_to_db(latest_news)
-                logger.info("Последние новости получены и сохранены")
+            last_fetched_time = get_last_fetched_news_time()
+            if not last_fetched_time or (datetime.now() - last_fetched_time).total_seconds() > 86400:
+                latest_news = fetch_latest_news(NEWS_API_KEY)
+                if latest_news:
+                    save_news_to_db(latest_news)
+                    logger.info("Последние новости получены и сохранены")
 
-        await asyncio.sleep(30)
+            await asyncio.sleep(30)
+        except Exception as e:
+            logger.error(f"Ошибка в периодической задаче: {e}")
+            await asyncio.sleep(30)  # Ждем перед повторной попыткой
 
 
 async def main():

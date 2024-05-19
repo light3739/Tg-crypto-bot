@@ -1,11 +1,16 @@
+import logging
+
 import requests
 from datetime import datetime
 from translate import Translator
 import psycopg2
 from config import DATABASE_URL
 
+logger = logging.getLogger(__name__)
+
 
 def fetch_latest_news(api_key):
+    logger.info("Парсинг новостей начат")
     url = f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=blockchain&apikey={api_key}'
     response = requests.get(url)
     data = response.json()
@@ -33,8 +38,8 @@ def fetch_latest_news(api_key):
         )
 
         return {
-            "title": title,
-            "summary": summary,
+            "title": title_ru,
+            "summary": summary_ru,
             "article_url": article_url,
             "time_published": dt,
             "authors": authors,
