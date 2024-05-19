@@ -1,10 +1,32 @@
 import logging
 import plotly.graph_objects as go
 import os
-
-from config import IMAGES_DIR
+import psycopg2
+import pandas as pd
+from config import IMAGES_DIR, DATABASE_URL
 
 logger = logging.getLogger(__name__)
+
+
+def get_crypto_chart_data(crypto):
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT timestamp, price
+        FROM crypto_charts
+        WHERE crypto = %s
+        ORDER BY timestamp
+    """, (crypto,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows, columns=['timestamp', 'price'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    return df
 
 
 def create_plot(df, crypto):

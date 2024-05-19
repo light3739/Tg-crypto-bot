@@ -10,7 +10,7 @@ def calculate_volatility(df):
         logger.error("DataFrame пуст. Невозможно рассчитать волатильность.")
         return None
     df['returns'] = df['price'].pct_change()
-    volatility = df['returns'].std() * (30 ** 0.5)
+    volatility = df['returns'].std() * (90 ** 0.5)
     logger.info(f"Рассчитанная волатильность: {volatility}")
     return volatility
 

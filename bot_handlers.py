@@ -4,11 +4,11 @@ from datetime import timedelta, datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 import psycopg2
-from data_fetcher import get_crypto_data
+from data_fetcher import get_crypto_data, save_crypto_sub_data, save_crypto_charts_data
 from metrics_calculator import calculate_volatility, calculate_metrics
 from indicators_calculator import calculate_indicators
 from news_fetcher import fetch_latest_news, save_news_to_db, get_last_fetched_news_time
-from plot_creator import create_plot, create_indicators_plot, create_gauge
+from plot_creator import create_plot, create_indicators_plot, create_gauge, get_crypto_chart_data
 import os
 from config import IMAGES_DIR, DATABASE_URL, NEWS_API_KEY
 
@@ -216,7 +216,14 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     crypto = context.user_data['crypto']
 
     logger.info(f"Получение данных для {crypto}")
+
+    # Получаем актуальные данные за последние 90 дней и сохраняем их в базу данных
     df = get_crypto_data(crypto, 'd1', timedelta(days=90))
+    if not df.empty:
+        save_crypto_charts_data(df, crypto)  # Сохраняем данные в таблицу crypto_charts
+
+    # Получаем данные из БД
+    df = get_crypto_chart_data(crypto)
     if df.empty:
         await query.edit_message_text(f"Не удалось получить данные для {crypto.capitalize()}")
         return ConversationHandler.END
@@ -233,7 +240,7 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     if chart_type == 'price':
         logger.info(f"Создание графика цен для {crypto}")
-        create_plot(df, crypto)
+        create_plot(df, crypto)  # Передаем DataFrame и имя криптовалюты
         file_path = os.path.join(IMAGES_DIR, f'{crypto}.png')
         if os.path.exists(file_path):
             with open(file_path, 'rb') as photo:
