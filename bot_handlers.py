@@ -217,12 +217,10 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     logger.info(f"Получение данных для {crypto}")
 
-    # Получаем актуальные данные за последние 90 дней и сохраняем их в базу данных
     df = get_crypto_data(crypto, 'd1', timedelta(days=90))
     if not df.empty:
-        save_crypto_charts_data(df, crypto)  # Сохраняем данные в таблицу crypto_charts
+        save_crypto_charts_data(df, crypto) 
 
-    # Получаем данные из БД
     df = get_crypto_chart_data(crypto)
     if df.empty:
         await query.edit_message_text(f"Не удалось получить данные для {crypto.capitalize()}")
@@ -231,6 +229,7 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     df = calculate_metrics(df)
     df = calculate_indicators(df)
     volatility = calculate_volatility(df)
+
     if volatility is None:
         await query.edit_message_text(f"Не удалось рассчитать волатильность для {crypto.capitalize()}")
         return ConversationHandler.END
@@ -240,7 +239,7 @@ async def select_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     if chart_type == 'price':
         logger.info(f"Создание графика цен для {crypto}")
-        create_plot(df, crypto)  # Передаем DataFrame и имя криптовалюты
+        create_plot(df, crypto)
         file_path = os.path.join(IMAGES_DIR, f'{crypto}.png')
         if os.path.exists(file_path):
             with open(file_path, 'rb') as photo:

@@ -45,15 +45,12 @@ async def check_price_changes():
     for telegram_id, crypto, threshold, threshold_type, last_notified in subscriptions:
         logger.debug(f"Проверка изменения цен для пользователя {telegram_id} и криптовалюты {crypto}.")
 
-        # Получаем актуальные данные и сохраняем их в базу данных
         df = get_crypto_data(crypto, 'm1', timedelta(minutes=5))
         if not df.empty:
-            save_crypto_sub_data(df, crypto)  # Сохраняем данные в таблицу crypto_sub
+            save_crypto_sub_data(df, crypto)
 
-            # Добавляем небольшую задержку перед запросом на получение данных
             await asyncio.sleep(1)
 
-            # Проверяем последние цены в базе данных
             latest_price = get_latest_price(crypto)
             if latest_price is not None:
                 price_change = calculate_price_change(df)

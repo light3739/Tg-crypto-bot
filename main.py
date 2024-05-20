@@ -80,7 +80,7 @@ async def periodic_check():
             await asyncio.sleep(30)
         except Exception as e:
             logger.error(f"Ошибка в периодической задаче: {e}")
-            await asyncio.sleep(30)  # Ждем перед повторной попыткой
+            await asyncio.sleep(30)
 
 
 async def main():

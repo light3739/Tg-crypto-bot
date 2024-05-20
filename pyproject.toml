@@ -2,7 +2,7 @@
 name = "tg-crypto-bot"
 version = "0.1.0"
 description = "Crypto tg bot"
-authors = ["Maksim <maxikpetlitskii@gmail.com>"]
+authors = ["Roman <gricrom21@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]

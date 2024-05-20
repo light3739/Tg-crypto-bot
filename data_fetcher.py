@@ -34,19 +34,16 @@ def save_crypto_data(df, crypto, table_name):
     cur = conn.cursor()
 
     for index, row in df.iterrows():
-        # Проверяем, существует ли запись с такой же комбинацией crypto и timestamp
         cur.execute(f"""
             SELECT 1 FROM {table_name} WHERE crypto = %s AND timestamp = %s
         """, (crypto, row['timestamp']))
         exists = cur.fetchone()
 
         if exists:
-            # Обновляем существующую запись
             cur.execute(f"""
                 UPDATE {table_name} SET price = %s WHERE crypto = %s AND timestamp = %s
             """, (row['price'], crypto, row['timestamp']))
         else:
-            # Вставляем новую запись
             cur.execute(f"""
                 INSERT INTO {table_name} (crypto, timestamp, price) VALUES (%s, %s, %s)
             """, (crypto, row['timestamp'], row['price']))
